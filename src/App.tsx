@@ -77,7 +77,6 @@ export default function App() {
           timestamp: new Date().toISOString()
         };
         setToasts(prev => [welcomeToast, ...prev]);
-        setIsAuthSetupOpen(false);
       }
     } catch (error) {
       console.error("Error signing in", error);
