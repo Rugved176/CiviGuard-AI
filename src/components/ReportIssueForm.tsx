@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CivicIssue, AgentResponses } from '../types';
 import {
   FileText, MapPin, Tag, User, Camera, ShieldAlert,
-  Loader2, Cpu, CheckCircle, AlertCircle, ArrowRight, Zap, Download
+  Loader2, Cpu, CheckCircle, AlertCircle, ArrowRight, Zap, Download, Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import LocationPicker from './LocationPicker';
@@ -41,6 +41,44 @@ export default function ReportIssueForm({ onIssueReported, onClose, defaultRepor
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
   const [state, setState] = useState('Maharashtra');
   const [city, setCity] = useState('Municipal Corporation');
+  const [isDrafting, setIsDrafting] = useState(false);
+  const [imageFileBase64, setImageFileBase64] = useState<string | undefined>(undefined);
+  const [imageFileName, setImageFileName] = useState('');
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFileName(file.name);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImageFileBase64(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAutoDraft = async () => {
+    const promptText = title.trim() + " " + description.trim();
+    if (!promptText.trim()) return;
+    
+    setIsDrafting(true);
+    try {
+      const response = await fetch("/api/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: promptText })
+      });
+      const contentType = response.headers.get("content-type");
+      if (response.ok && contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        if (data.draft) setDescription(data.draft);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsDrafting(false);
+    }
+  };
   
   // Update reportedBy when user profile logins
   useEffect(() => {
@@ -137,7 +175,7 @@ export default function ReportIssueForm({ onIssueReported, onClose, defaultRepor
         category,
         location,
         reportedBy,
-        imageUrl: IMAGE_PRESETS[category],
+        imageUrl: imageFileBase64 || IMAGE_PRESETS[category],
         lat: selectedLocation?.lat,
         lng: selectedLocation?.lng,
         state,
@@ -150,8 +188,9 @@ export default function ReportIssueForm({ onIssueReported, onClose, defaultRepor
         body: JSON.stringify(payload)
       });
 
-      if (!response.ok) {
-        throw new Error("Server failed to run agent orchestration model.");
+      const contentType = response.headers.get("content-type");
+      if (!response.ok || (contentType && !contentType.includes("application/json"))) {
+        throw new Error("Server failed to run agent orchestration model or returned invalid data.");
       }
 
       const issueData: CivicIssue = await response.json();
@@ -276,8 +315,19 @@ export default function ReportIssueForm({ onIssueReported, onClose, defaultRepor
               </div>
 
               {/* Description Input */}
-              <div className="space-y-1">
-                <label className="text-xs font-mono text-slate-500 uppercase tracking-wider font-semibold">Full Context Description</label>
+              <div className="space-y-1 relative">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-mono text-slate-500 uppercase tracking-wider font-semibold">Full Context Description</label>
+                  <button
+                    type="button"
+                    onClick={handleAutoDraft}
+                    disabled={isDrafting || (!title && !description)}
+                    className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-2.5 py-1 rounded-md font-semibold transition-colors disabled:opacity-50"
+                  >
+                    {isDrafting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                    {isDrafting ? "Drafting..." : "AI Auto-Draft"}
+                  </button>
+                </div>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -311,6 +361,29 @@ export default function ReportIssueForm({ onIssueReported, onClose, defaultRepor
                     className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                     required
                   />
+                </div>
+              </div>
+
+              {/* Media Evidence Upload */}
+              <div className="space-y-1">
+                <label className="text-xs font-mono text-slate-500 uppercase tracking-wider font-semibold">Media Evidence (Image/Video)</label>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    id="evidence-upload"
+                  />
+                  <label 
+                    htmlFor="evidence-upload" 
+                    className="w-full bg-slate-50 border border-dashed border-slate-300 rounded-xl py-3 px-3 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors"
+                  >
+                    <Camera className="text-slate-400 mb-1" size={18} />
+                    <span className="text-xs text-slate-600 font-medium">
+                      {imageFileName ? imageFileName : "Click to upload image or video evidence"}
+                    </span>
+                  </label>
                 </div>
               </div>
 

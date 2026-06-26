@@ -587,31 +587,6 @@ export default function AdminPortal({ issues, onRefresh }: AdminPortalProps) {
                   )}
                 </button>
               </form>
-
-              {/* Demo auto-fill help */}
-              <div className="mt-8 pt-6 border-t border-slate-100">
-                <div className="flex items-center gap-1.5 mb-3 text-[10px] font-bold font-mono uppercase text-slate-400">
-                  <HelpCircle size={12} />
-                  <span>DEMO ROLES (CLICK TO AUTO-FILL)</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {PRESET_USERS.map((user) => (
-                    <button
-                      key={user.email}
-                      type="button"
-                      onClick={() => handlePresetFill(user)}
-                      className="p-2 text-left bg-slate-50 hover:bg-blue-50 hover:border-blue-200 border border-slate-200 rounded-xl transition-all cursor-pointer group"
-                    >
-                      <div className="font-bold text-[10px] text-slate-700 group-hover:text-blue-800 leading-tight">
-                        {user.name}
-                      </div>
-                      <div className="text-[9px] text-slate-400 mt-0.5 line-clamp-1">
-                        {user.designation}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
           </motion.div>
         ) : (

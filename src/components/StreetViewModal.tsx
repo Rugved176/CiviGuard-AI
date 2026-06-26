@@ -32,7 +32,6 @@ export default function StreetViewModal({
     return (
       k === '' ||
       k === 'YOUR_API_KEY' ||
-      k === 'AIzaSyBsDZElnhpfKp-DrtQ-StRh0E5tz05bdFo' ||
       k.includes('YOUR_') ||
       k.includes('PLACEHOLDER')
     );

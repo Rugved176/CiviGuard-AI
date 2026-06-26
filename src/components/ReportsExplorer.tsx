@@ -12,6 +12,7 @@ interface ReportsExplorerProps {
   selectedIssueId: string | null;
   onSelectIssue: (id: string) => void;
   onResolveIssue: (id: string) => void;
+  onVerifyIssue?: (id: string) => void;
   followedIssueIds: string[];
   onToggleFollow: (id: string) => void;
 }
@@ -21,6 +22,7 @@ export default function ReportsExplorer({
   selectedIssueId,
   onSelectIssue,
   onResolveIssue,
+  onVerifyIssue,
   followedIssueIds,
   onToggleFollow
 }: ReportsExplorerProps) {
@@ -96,7 +98,7 @@ export default function ReportsExplorer({
       reference: `${cityShort}/CIVIC-PULSE/REF-${issue.id.substring(2)}-2026`,
       to: `${deptCommissioner},\n${city} Headquarters,\n${city.replace(' Municipal Corporation', '')}, ${state}, India`,
       subject: `E-SCALATION: Redressal request for public hazard (${issue.category.toUpperCase()}) at ${issue.location}`,
-      body: `Respected Sir/Madam,
+      body: issue.agentResponses?.complaintDraft || `Respected Sir/Madam,
 
 I am writing to formally log a community grievance on behalf of the residents of ${city.replace(' Municipal Corporation', '')}, filed through the CivicPulse AI Community Resolution Grid.
 
@@ -524,6 +526,16 @@ CivicPulse AI Resolution Agent & Connected Citizens
               <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
                 <button
                   type="button"
+                  onClick={() => onVerifyIssue && onVerifyIssue(selectedIssue.id)}
+                  className="font-semibold text-xs py-2 px-3.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all border bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                  title="Verify this issue to increase its priority and earn civic points"
+                >
+                  <CheckCircle size={14} className="text-emerald-600" />
+                  <span>Verify ({selectedIssue.verificationCount || 0})</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => onToggleFollow(selectedIssue.id)}
                   className={`font-semibold text-xs py-2 px-3.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all border ${
                     followedIssueIds.includes(selectedIssue.id)
@@ -776,8 +788,28 @@ CivicPulse AI Resolution Agent & Connected Citizens
                     </div>
 
                     {/* Right Column: Interactive Event Inspector / Telemetry Payloads */}
-                    <div className="md:col-span-5">
-                      <div className="bg-slate-900 text-slate-100 border border-slate-800 rounded-xl overflow-hidden shadow-lg h-full flex flex-col min-h-[350px]">
+                    <div className="md:col-span-5 space-y-4">
+                      {/* Media Evidence Display */}
+                      {selectedIssue.imageUrl && (
+                        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
+                          <div className="p-2 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                            <span className="text-[10px] font-mono font-bold text-slate-500 uppercase">Attached Media Evidence</span>
+                            <span className="text-[9px] font-mono bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">VERIFIED NODE</span>
+                          </div>
+                          <div className="w-full h-40 bg-slate-100 relative">
+                            <img 
+                              src={selectedIssue.imageUrl} 
+                              alt="Issue evidence" 
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1584824486509-112e4181ff6b?w=500&auto=format&fit=crop';
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="bg-slate-900 text-slate-100 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col min-h-[350px]">
                         
                         {/* Inspector Header */}
                         <div className="p-3 bg-slate-950 border-b border-slate-800 flex justify-between items-center">

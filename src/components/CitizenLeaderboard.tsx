@@ -35,6 +35,21 @@ export default function CitizenLeaderboard({ issues = [] }: CitizenLeaderboardPr
     }
     citizenMap[name].points += points;
     citizenMap[name].reports += 1;
+
+    // Add points for verifiers
+    if (issue.verifiedBy && Array.isArray(issue.verifiedBy)) {
+      issue.verifiedBy.forEach(verifierName => {
+        if (!citizenMap[verifierName]) {
+          citizenMap[verifierName] = {
+            points: 0,
+            reports: 0,
+            city: shortCity,
+            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(verifierName)}`
+          };
+        }
+        citizenMap[verifierName].points += 5; // 5 points per verification
+      });
+    }
   });
 
   // Convert map to sorted list

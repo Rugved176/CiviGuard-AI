@@ -10,7 +10,8 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Initialize Gemini Client
 const ai = process.env.GEMINI_API_KEY
@@ -180,6 +181,8 @@ function runProceduralAgentOrchestrator(
   
   const resolution = `📄 RESOLUTION AGENT\nAction taken: formal complaint drafted | Complaint ID: CP-${deptDetails.code}-${compNum} | Sent to: ${deptDetails.name} | Expected response SLA: ${deptDetails.sla} days`;
   
+  const complaintDraft = `To the attention of ${deptDetails.name},\n\nA civic issue has been reported regarding "${title}". Please review the attached details for immediate action.\n\nDescription: ${description}\nLocation: ${location}\nReported by: ${reporter}\n\nPlease escalate according to standard SLA.`;
+
   const insights = `📊 INSIGHTS AGENT\nPattern status: municipal grid infrastructure check complete. Prediction: ${predictionText} Recommendation: Coordinate immediate municipal repair teams.`;
 
   const rawText = `🧠 ORCHESTRATOR
@@ -209,6 +212,7 @@ Citizen Points Awarded: ${points}`;
       classifier,
       geoRouter,
       resolution,
+      complaintDraft,
       insights,
       rawText
     },
@@ -239,13 +243,13 @@ function seedDatabase() {
     'Parks': 0,
   };
 
-  // Update department loads safely with generic loads (not mentioning Pune or PMC or MSEDCL)
+  // Update department loads
   platformStats.departmentLoad = [
-    { department: "Roads Department (PWD)", load: 42 },
-    { department: "Water Supply & Drainage Board", load: 28 },
-    { department: "Electricity & Power Board", load: 35 },
-    { department: "Solid Waste Management Department", load: 19 },
-    { department: "Horticulture & Parks Department", load: 12 },
+    { department: "Roads Department (PWD)", load: 0 },
+    { department: "Water Supply & Drainage Board", load: 0 },
+    { department: "Electricity & Power Board", load: 0 },
+    { department: "Solid Waste Management Department", load: 0 },
+    { department: "Horticulture & Parks Department", load: 0 },
   ];
 }
 
@@ -260,6 +264,36 @@ app.get("/api/stats", (req, res) => {
 // Express Endpoint to return all reported issues
 app.get("/api/reports", (req, res) => {
   res.json(reportedIssues);
+});
+
+// Express Endpoint to auto-draft a description using Gemini AI
+app.post("/api/draft", async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    if (!prompt) {
+      return res.status(400).json({ error: "Missing prompt for drafting." });
+    }
+
+    if (!ai) {
+      return res.json({ draft: "I am reporting a severe civic issue in my area concerning: " + prompt + ". Please resolve it immediately to ensure citizen safety." });
+    }
+
+    const aiResponse = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: `You are an AI assistant helping a citizen write a formal and descriptive civic issue report to their Municipal Corporation.
+Given the citizen's short description or keywords, draft a professional, detailed, and realistic description that they can submit. Add realistic details like estimated dimensions, safety risks, or surrounding context to make it actionable.
+Keep it to 2-4 sentences.
+Citizen's input: "${prompt}"`,
+      config: {
+        systemInstruction: "Draft civic complaints professionally."
+      }
+    });
+
+    res.json({ draft: aiResponse.text?.trim() || "" });
+  } catch (error) {
+    console.error("Draft generation failed:", error);
+    res.status(500).json({ error: "Failed to generate draft." });
+  }
 });
 
 // Express Endpoint to report a new issue (Running multi-agent analysis)
@@ -312,7 +346,7 @@ Coordinates: Lat ${finalLat.toFixed(5)}, Lng ${finalLng.toFixed(5)}
 Act as our multi-agent orchestration system (CivicPulse AI) and analyze this. You have 4 specialized agents:
 1. CLASSIFIER AGENT - Classify issue type, assess severity (1-10), route to department: ${deptDetails.name}, assign priority (Low, Medium, High, Critical).
 2. GEO-ROUTER AGENT - Check duplicate, assign ward: ${wardDetails.ward}, assign coordinates: Lat ${finalLat.toFixed(4)}, Lng ${finalLng.toFixed(4)}, declare cluster status.
-3. RESOLUTION AGENT - Draft formal complaint details, generate unique Complaint ID matching CP-[CODE]-XXXX, note expected response SLA in days.
+3. RESOLUTION AGENT - Draft formal complaint details, generate unique Complaint ID matching CP-[CODE]-XXXX, note expected response SLA in days. Write a full, formal complaint letter draft addressing the department.
 4. INSIGHTS AGENT - Detect pattern, make predictions (e.g., predicted pavements failure in 2 weeks or water pipe pressure bursts in 7-10 days if applicable), and give concrete recommendations to local authorities.
 
 You MUST respond strictly in the following JSON format. Do not add markdown outside of the JSON object.
@@ -322,6 +356,7 @@ JSON Schema:
   "classifier": "🔍 CLASSIFIER AGENT\\n[Exact text specified in instructions: Classify issue type | Severity: X/10 | Routing to: ${deptDetails.name} | Priority: Low/Medium/High/Critical. Followed by a short analysis]",
   "geoRouter": "📍 GEO-ROUTER AGENT\\n[Check for duplicates | Zone/Ward assignment: ${wardDetails.ward} | Cluster status. Followed by ward details]",
   "resolution": "📄 RESOLUTION AGENT\\n[Action taken: formal complaint drafted | Complaint ID: CP-${deptDetails.code}-XXXX | Sent to: ${deptDetails.name} | Expected response SLA: X days]",
+  "complaintDraft": "[Full, formal complaint letter addressed to ${deptDetails.name} detailing the issue from ${reportedBy} at ${location}]",
   "insights": "📊 INSIGHTS AGENT\\n[Pattern detected or not | Prediction if applicable | Recommendation to local authorities]",
   "rawText": "[Complete, continuous text block formatted EXACTLY matching the prompt response format with headers, agent sections and the ✅ SUMMARY section]",
   "metadata": {
@@ -351,6 +386,7 @@ Be highly realistic and specific. Ensure you follow the response format precisel
               classifier: geminiResult.classifier,
               geoRouter: geminiResult.geoRouter,
               resolution: geminiResult.resolution,
+              complaintDraft: geminiResult.complaintDraft,
               insights: geminiResult.insights,
               rawText: geminiResult.rawText || localAnalysis.responses.rawText,
             };
@@ -383,7 +419,9 @@ Be highly realistic and specific. Ensure you follow the response format precisel
       department: deptDetails.name,
       priority: finalPriority,
       points: finalPoints,
-      imageUrl: imageUrl || "https://images.unsplash.com/photo-1584824486509-112e4181ff6b?w=500&auto=format&fit=crop", // placeholder engineering
+      imageUrl: imageUrl || undefined,
+      verificationCount: 0,
+      verifiedBy: [],
       agentResponses: finalResponses,
       state,
       city
@@ -414,6 +452,29 @@ Be highly realistic and specific. Ensure you follow the response format precisel
     console.error("Failed to report issue:", error);
     res.status(500).json({ error: "An error occurred while running PMC multi-agent orchestration." });
   }
+});
+
+// Verify/upvote issue endpoint (Community Verification & Gamification)
+app.post("/api/verify/:id", (req, res) => {
+  const { id } = req.params;
+  const { user } = req.body;
+  const issue = reportedIssues.find(i => i.id === id);
+  if (!issue) {
+    return res.status(404).json({ error: "Issue not found" });
+  }
+  if (!user) {
+    return res.status(400).json({ error: "User info missing" });
+  }
+
+  issue.verifiedBy = issue.verifiedBy || [];
+  if (!issue.verifiedBy.includes(user)) {
+    issue.verifiedBy.push(user);
+    issue.verificationCount = (issue.verificationCount || 0) + 1;
+    // Boost points when verified
+    issue.points += 5;
+  }
+  
+  res.json(issue);
 });
 
 // Resolve issue endpoint (for simulation)
@@ -599,27 +660,112 @@ app.get('/api/auth/profile', async (req, res) => {
   }
 });
 
-// Simulate background PMC resolution or escalation every 25 seconds to demonstrate real-time notifications
-setInterval(() => {
-  const activeIssues = reportedIssues.filter(i => i.status === "Active");
-  if (activeIssues.length > 0) {
-    const randomIndex = Math.floor(Math.random() * activeIssues.length);
-    const issueToUpdate = activeIssues[randomIndex];
-    const shouldResolve = Math.random() < 0.7;
-    
-    if (shouldResolve) {
-      issueToUpdate.status = "Resolved";
-      platformStats.resolvedIssues += 1;
-      platformStats.resolutionRate = platformStats.totalIssuesThisMonth > 0
-        ? Math.round((platformStats.resolvedIssues / platformStats.totalIssuesThisMonth) * 100)
-        : 100;
-      console.log(`[SIMULATION] PMC background resolved issue ${issueToUpdate.id}`);
-    } else {
-      issueToUpdate.status = "Escalated";
-      console.log(`[SIMULATION] PMC background escalated issue ${issueToUpdate.id}`);
+// Get Predictive Insights Endpoint
+app.get('/api/predictive-insights', async (req, res) => {
+  try {
+    if (reportedIssues.length === 0) {
+      return res.json([]);
     }
+
+    if (!ai) {
+      // Fallback if AI not available but we have issues (we should realistically analyze them but we'll return a simple fallback indicating need for AI)
+      return res.json([
+        {
+          id: "PI-FALLBACK",
+          location: "General",
+          type: "System",
+          indicator: "AI backend not connected to analyze the " + reportedIssues.length + " active issues.",
+          timeframe: "N/A",
+          preventiveAction: "Configure Gemini AI for insights.",
+          riskLevel: "Medium"
+        }
+      ]);
+    }
+
+    const issuesContext = reportedIssues.slice(0, 15).map(i => `[${i.category}] ${i.location} - ${i.title}`).join("\n");
+    const prompt = `Based on the following recent civic issues, generate a predictive insight analysis forecasting 2-3 potential civic infrastructure failure points.
+
+Recent Issues:
+${issuesContext}
+
+Return a JSON array of objects with the following schema exactly (no markdown formatting outside the array, just the raw JSON array):
+[
+  {
+    "id": "Unique string ID (e.g. PI-101)",
+    "location": "String describing the vulnerable area based on the issues",
+    "type": "String describing infrastructure type (e.g. Water Pipe, Road Pavement, Transformer)",
+    "indicator": "String describing the pattern detected from the issues",
+    "timeframe": "String forecasting when failure might occur",
+    "preventiveAction": "String recommending specific action",
+    "riskLevel": "High" | "Critical" | "Medium"
   }
-}, 25000);
+]`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      },
+    });
+
+    if (response.text) {
+      try {
+        const insights = JSON.parse(response.text.trim());
+        res.json(insights);
+      } catch (e) {
+        res.status(500).json({ error: "Failed to parse predictive insights from AI." });
+      }
+    } else {
+      res.status(500).json({ error: "No response from AI." });
+    }
+  } catch (error) {
+    console.error("Predictive insights generation failed:", error);
+    res.status(500).json({ error: "An error occurred while generating predictive insights." });
+  }
+});
+
+// Get Citizen Gamification Profile
+app.get('/api/citizen-profile', (req, res) => {
+  const email = req.query.email as string;
+  const name = req.query.name as string;
+  
+  if (!email) {
+    return res.status(400).json({ error: "Email required" });
+  }
+
+  let points = 0;
+  let reportsCount = 0;
+  let verifiedCount = 0;
+  
+  reportedIssues.forEach(issue => {
+    if (issue.reportedBy === name || issue.reportedBy === email) {
+      reportsCount++;
+      points += 10;
+    }
+    if (issue.verifiedBy && issue.verifiedBy.includes(name || email)) {
+      verifiedCount++;
+      points += 5;
+    }
+  });
+
+  const badges = [];
+  if (reportsCount > 0) badges.push('First Report');
+  if (reportsCount >= 5) badges.push('Civic Hero');
+  if (verifiedCount >= 5) badges.push('Community Guardian');
+
+  res.json({
+    name: name || email,
+    email,
+    points,
+    reportsCount,
+    verifiedCount,
+    badges
+  });
+});
+
+// Removed simulated background issue resolution.
+
 
 
 // Mount Vite in dev mode, static folder in prod

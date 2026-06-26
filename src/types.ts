@@ -3,6 +3,7 @@ export interface AgentResponses {
   classifier: string;
   geoRouter: string;
   resolution: string;
+  complaintDraft?: string;
   insights: string;
   rawText: string;
 }
@@ -24,11 +25,22 @@ export interface CivicIssue {
   priority: 'Low' | 'Medium' | 'High' | 'Critical';
   points: number;
   imageUrl?: string;
+  verificationCount?: number;
+  verifiedBy?: string[];
   agentResponses?: AgentResponses;
   duplicateOf?: string;
   adminNotes?: string;
   state?: string;
   city?: string;
+}
+
+export interface CitizenProfile {
+  name: string;
+  email: string;
+  points: number;
+  reportsCount: number;
+  verifiedCount: number;
+  badges: string[];
 }
 
 export interface PlatformStats {

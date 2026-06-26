@@ -32,6 +32,7 @@ export default function App() {
     email: string;
     name: string;
     picture?: string;
+    gamification?: any;
   } | null>(() => {
     try {
       const saved = localStorage.getItem('google_user_profile');
@@ -166,6 +167,11 @@ export default function App() {
         throw new Error("Failed to communicate with the CivicPulse API backend.");
       }
 
+      const statsContentType = statsRes.headers.get("content-type");
+      if (statsContentType && !statsContentType.includes("application/json")) {
+        throw new Error("Server is starting or returned invalid data. Please try again in a few seconds.");
+      }
+
       const statsData: PlatformStats = await statsRes.json();
       const issuesData: CivicIssue[] = await issuesRes.json();
 
@@ -235,6 +241,45 @@ export default function App() {
     }
   };
 
+  const handleVerifyIssue = async (id: string) => {
+    try {
+      const userIdentifier = userProfile ? userProfile.email : 'anonymous_citizen';
+      const response = await fetch(`/api/verify/${id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ user: userIdentifier })
+      });
+      if (response.ok) {
+        fetchData();
+        fetchCitizenProfile();
+      }
+    } catch (err) {
+      console.error("Verification sync failed", err);
+    }
+  };
+
+  const fetchCitizenProfile = async () => {
+    if (!userProfile) return;
+    try {
+      const res = await fetch(`/api/citizen-profile?email=${encodeURIComponent(userProfile.email)}&name=${encodeURIComponent(userProfile.name)}`);
+      if (res.ok) {
+        const data = await res.json();
+        // Just store the points/badges in a ref or state if needed, or update userProfile.
+        setUserProfile(prev => prev ? { ...prev, gamification: data } : prev);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    if (userProfile) {
+      fetchCitizenProfile();
+    }
+  }, [userProfile, issues.length]);
+
   const handleSelectFromMap = (id: string) => {
     setSelectedIssueId(id);
     setActiveTab('explorer');
@@ -286,7 +331,14 @@ export default function App() {
                   </div>
                 )}
                 <div className="flex flex-col text-left">
-                  <span className="text-[9px] font-bold text-slate-700 leading-none">{userProfile.name}</span>
+                  <span className="text-[9px] font-bold text-slate-700 leading-none flex items-center gap-1">
+                    {userProfile.name}
+                    {userProfile.gamification && (
+                      <span className="bg-amber-100 text-amber-700 px-1 py-0.5 rounded-sm text-[8px] font-mono leading-none">
+                        ⭐ {userProfile.gamification.points}
+                      </span>
+                    )}
+                  </span>
                   <span className="text-[8px] text-slate-400 font-mono leading-none">{userProfile.email}</span>
                 </div>
                 <button
@@ -446,6 +498,7 @@ export default function App() {
                   selectedIssueId={selectedIssueId}
                   onSelectIssue={setSelectedIssueId}
                   onResolveIssue={handleResolveIssue}
+                  onVerifyIssue={handleVerifyIssue}
                   followedIssueIds={followedIssueIds}
                   onToggleFollow={handleToggleFollow}
                 />
@@ -649,34 +702,7 @@ export default function App() {
               </div>
 
               {/* Action options */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
-                {/* Instant Bypass */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const profile = {
-                      email: 'rugvedsolanki6@gmail.com',
-                      name: 'Rugved Solanki',
-                      picture: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces'
-                    };
-                    setUserProfile(profile);
-                    localStorage.setItem('google_user_profile', JSON.stringify(profile));
-                    
-                    const welcomeToast: NotificationToast = {
-                      id: Math.random().toString(36).substring(2, 9),
-                      issueId: 'google-auth-simulated',
-                      title: `Signed in as Rugved Solanki (Simulated)`,
-                      type: 'resolved',
-                      timestamp: new Date().toISOString()
-                    };
-                    setToasts(prev => [welcomeToast, ...prev]);
-                    setIsAuthSetupOpen(false);
-                  }}
-                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold py-2 px-4 rounded-xl cursor-pointer transition-all"
-                  title="Simulate instant authentication without waiting for Google Cloud Console propagate times"
-                >
-                  🚀 Instant Demo Bypass
-                </button>
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end flex-wrap gap-2">
 
                 <div className="flex items-center gap-2">
                   <button
